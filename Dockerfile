@@ -4,6 +4,7 @@ FROM python:3.13.5-slim
 ENV PYTHONDONTWRITEBYTECODE="1"
 ENV PYTHONUNBUFFERED="1"
 ENV PORT="8888"
+ENV PIP_NO_PROXY="*"
 
 # Set work directory
 WORKDIR /mediaflow_proxy
@@ -18,8 +19,8 @@ ENV PATH="/home/mediaflow_proxy/.local/bin:$PATH"
 # Switch to non-root user
 USER mediaflow_proxy
 
-# Install Poetry
-RUN pip install --user --no-cache-dir poetry
+# Install Poetry (disable proxy for build process)
+RUN pip install --user --no-cache-dir --trusted-host pypi.org --trusted-host pypi.python.org --trusted-host files.pythonhosted.org poetry
 
 # Copy only requirements to cache them in docker layer
 COPY --chown=mediaflow_proxy:mediaflow_proxy pyproject.toml poetry.lock* /mediaflow_proxy/

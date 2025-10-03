@@ -1,0 +1,26 @@
+services:
+  - type: web
+    name: mediaflow-proxy
+    env: docker
+    plan: free  # Change to 'starter' or higher for production
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: API_PASSWORD
+        generateValue: true  # Render will generate a secure password
+      - key: PORT
+        value: 8888
+      - key: FORWARDED_ALLOW_IPS
+        value: "*"
+      - key: ENABLE_STREAMING_PROGRESS
+        value: "false"
+      - key: DISABLE_HOME_PAGE
+        value: "false"
+      - key: DISABLE_DOCS
+        value: "false"
+      - key: DISABLE_SPEEDTEST
+        value: "false"
+      - key: ENABLE_HLS_PREBUFFER
+        value: "false"
+      - key: ENABLE_DASH_PREBUFFER
+        value: "false"
+    healthCheckPath: /
