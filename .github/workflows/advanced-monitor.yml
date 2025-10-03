@@ -1,0 +1,144 @@
+name: Advanced Service Monitor
+
+on:
+  schedule:
+    # Run every 10 minutes during peak hours (to ensure service stays alive)
+    - cron: '*/10 6-22 * * *'  # Every 10 mins from 6 AM to 10 PM UTC
+    # Run every 20 minutes during off-peak hours
+    - cron: '*/20 22-6 * * *'  # Every 20 mins from 10 PM to 6 AM UTC
+  workflow_dispatch:
+    inputs:
+      force_wake:
+        description: 'Force wake service (bypass schedule)'
+        required: false
+        default: 'false'
+        type: boolean
+
+env:
+  RENDER_URL: "https://mediaflow-proxy-0fzf.onrender.com"
+
+jobs:
+  monitor-service:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    
+    steps:
+      - name: Setup monitoring
+        run: |
+          echo "🚀 Starting MediaFlow Proxy monitoring..."
+          echo "Service URL: $RENDER_URL"
+          echo "Timestamp: $(date -u)"
+          echo "=================="
+
+      - name: Health Check
+        id: health_check
+        run: |
+          echo "🏥 Performing health check..."
+          
+          # Check main endpoint
+          main_status=$(curl -s -o /dev/null -w "%{http_code}" -m 30 "$RENDER_URL/" || echo "000")
+          echo "main_status=$main_status" >> $GITHUB_OUTPUT
+          
+          # Check API docs (this loads the FastAPI app)
+          docs_status=$(curl -s -o /dev/null -w "%{http_code}" -m 30 "$RENDER_URL/docs" || echo "000")
+          echo "docs_status=$docs_status" >> $GITHUB_OUTPUT
+          
+          # Check proxy IP endpoint (this tests the core functionality)
+          ip_status=$(curl -s -o /dev/null -w "%{http_code}" -m 30 "$RENDER_URL/proxy/ip" || echo "000")
+          echo "ip_status=$ip_status" >> $GITHUB_OUTPUT
+          
+          echo "📊 Status codes:"
+          echo "  Main: $main_status"
+          echo "  Docs: $docs_status" 
+          echo "  IP: $ip_status"
+
+      - name: Test Core Functionality
+        if: steps.health_check.outputs.main_status == '200' || steps.health_check.outputs.main_status == '403'
+        run: |
+          echo "🧪 Testing core functionality..."
+          
+          # Test public IP endpoint (doesn't require API key)
+          ip_response=$(curl -s -m 30 "$RENDER_URL/proxy/ip" || echo "Failed to get IP")
+          echo "Public IP response: $ip_response"
+          
+          # Test if service is responsive
+          response_time=$(curl -s -o /dev/null -w "%{time_total}" -m 30 "$RENDER_URL/" || echo "timeout")
+          echo "⏱️ Response time: ${response_time}s"
+
+      - name: Wake Service if Needed
+        if: steps.health_check.outputs.main_status == '000' || github.event.inputs.force_wake == 'true'
+        run: |
+          echo "😴 Service appears to be sleeping or unreachable. Attempting to wake..."
+          
+          for i in {1..5}; do
+            echo "Wake attempt $i/5..."
+            curl -s -m 45 "$RENDER_URL/" > /dev/null && break
+            sleep 15
+          done
+          
+          # Final check
+          final_status=$(curl -s -o /dev/null -w "%{http_code}" -m 30 "$RENDER_URL/" || echo "000")
+          if [ "$final_status" = "200" ] || [ "$final_status" = "403" ]; then
+            echo "✅ Service successfully woken up! Status: $final_status"
+          else
+            echo "❌ Failed to wake service. Status: $final_status"
+            exit 1
+          fi
+
+      - name: Report Status
+        if: always()
+        run: |
+          echo "📈 Final Status Report:"
+          echo "=================="
+          
+          if [ "${{ steps.health_check.outputs.main_status }}" = "200" ] || [ "${{ steps.health_check.outputs.main_status }}" = "403" ]; then
+            echo "✅ Service is HEALTHY"
+          elif [ "${{ steps.health_check.outputs.main_status }}" = "000" ]; then
+            echo "⚠️ Service was SLEEPING/UNREACHABLE"
+          else
+            echo "❌ Service has ISSUES (Status: ${{ steps.health_check.outputs.main_status }})"
+          fi
+          
+          echo "Last check: $(date -u)"
+          echo "=================="
+
+      - name: Create Issue on Failure
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const title = `🚨 MediaFlow Proxy Service Down - ${new Date().toISOString()}`;
+            const body = `
+            ## Service Health Check Failed
+            
+            **Timestamp:** ${new Date().toUTCString()}
+            **Service URL:** ${{ env.RENDER_URL }}
+            
+            **Status Codes:**
+            - Main endpoint: ${{ steps.health_check.outputs.main_status }}
+            - Docs endpoint: ${{ steps.health_check.outputs.docs_status }}
+            - IP endpoint: ${{ steps.health_check.outputs.ip_status }}
+            
+            **Action Required:**
+            Please check the Render service logs and ensure the service is running properly.
+            
+            **Workflow Run:** ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+            `;
+            
+            // Check if issue already exists
+            const existingIssues = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              labels: ['service-down'],
+              state: 'open'
+            });
+            
+            if (existingIssues.data.length === 0) {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: title,
+                body: body,
+                labels: ['bug', 'service-down', 'urgent']
+              });
+            }
