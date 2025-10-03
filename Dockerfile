@@ -5,6 +5,10 @@ ENV PYTHONDONTWRITEBYTECODE="1"
 ENV PYTHONUNBUFFERED="1"
 ENV PORT="8888"
 ENV PIP_NO_PROXY="*"
+ENV HTTP_PROXY=""
+ENV HTTPS_PROXY=""
+ENV http_proxy=""
+ENV https_proxy=""
 
 # Set work directory
 WORKDIR /mediaflow_proxy
@@ -20,14 +24,16 @@ ENV PATH="/home/mediaflow_proxy/.local/bin:$PATH"
 USER mediaflow_proxy
 
 # Install Poetry (disable proxy for build process)
-RUN pip install --user --no-cache-dir --trusted-host pypi.org --trusted-host pypi.python.org --trusted-host files.pythonhosted.org poetry
+RUN unset HTTP_PROXY HTTPS_PROXY http_proxy https_proxy && \
+    pip install --user --no-cache-dir --trusted-host pypi.org --trusted-host pypi.python.org --trusted-host files.pythonhosted.org poetry
 
 # Copy only requirements to cache them in docker layer
 COPY --chown=mediaflow_proxy:mediaflow_proxy pyproject.toml poetry.lock* /mediaflow_proxy/
 
 # Project initialization:
-RUN poetry config virtualenvs.in-project true \
-    && poetry install --no-interaction --no-ansi --no-root --only main
+RUN unset HTTP_PROXY HTTPS_PROXY http_proxy https_proxy && \
+    poetry config virtualenvs.in-project true && \
+    poetry install --no-interaction --no-ansi --no-root --only main
 
 # Copy project files
 COPY --chown=mediaflow_proxy:mediaflow_proxy . /mediaflow_proxy
