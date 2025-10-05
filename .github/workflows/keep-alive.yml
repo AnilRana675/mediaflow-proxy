@@ -17,7 +17,7 @@ jobs:
           
           # Replace with your actual Render URL
           RENDER_URL="https://mediaflow-proxy-0fzf.onrender.com"
-          API_PASSWORD="Wasabi@675"  # URL encoded API password
+          API_PASSWORD="${{ secrets.API_PASSWORD }}"
           
           # Ping the health endpoint
           response=$(curl -s -o /dev/null -w "%{http_code}" "$RENDER_URL/" || echo "000")
