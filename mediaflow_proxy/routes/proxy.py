@@ -2,11 +2,13 @@ from typing import Annotated
 from urllib.parse import quote, unquote
 import re
 import logging
+import asyncio
 import httpx
 
 from fastapi import Request, Depends, APIRouter, Query, HTTPException
 from fastapi.responses import Response, RedirectResponse
 
+from mediaflow_proxy.configs import settings
 from mediaflow_proxy.handlers import (
     handle_hls_stream_proxy,
     handle_stream_request,
@@ -30,6 +32,32 @@ from mediaflow_proxy.utils.http_utils import (
 from mediaflow_proxy.utils.base64_utils import process_potential_base64_url
 
 proxy_router = APIRouter()
+
+
+def verify_api_password(api_password: str = Query(None)):
+    """
+    Verify the API password for protected endpoints.
+    
+    Args:
+        api_password (str): The API password to verify.
+        
+    Raises:
+        HTTPException: If the password is missing or incorrect.
+        
+    Returns:
+        bool: True if authentication is successful.
+    """
+    if settings.api_password is None:
+        # If no password is configured, allow access
+        return True
+    
+    if api_password is None:
+        raise HTTPException(status_code=401, detail="API password is required")
+    
+    if api_password != settings.api_password:
+        raise HTTPException(status_code=403, detail="Invalid API password")
+    
+    return True
 
 
 def sanitize_url(url: str) -> str:
@@ -553,3 +581,43 @@ async def get_mediaflow_proxy_public_ip():
         Response: The HTTP response with the public IP address in the form of a JSON object. {"ip": "xxx.xxx.xxx.xxx"}
     """
     return await get_public_ip()
+
+
+@proxy_router.get("/proxy/ip")
+async def get_authenticated_public_ip(authenticated: bool = Depends(verify_api_password)):
+    """
+    Retrieves the public IP address of the MediaFlow proxy server with authentication.
+    
+    Args:
+        authenticated (bool): Authentication dependency that verifies the API password.
+
+    Returns:
+        Response: The HTTP response with the public IP address in the form of a JSON object. {"ip": "xxx.xxx.xxx.xxx"}
+    """
+    return await get_public_ip()
+
+
+def verify_api_password(api_password: str = Query(None)):
+    """
+    Verify the API password for protected endpoints.
+    
+    Args:
+        api_password (str): The API password to verify.
+        
+    Raises:
+        HTTPException: If the password is missing or incorrect.
+        
+    Returns:
+        bool: True if authentication is successful.
+    """
+    if settings.api_password is None:
+        # If no password is configured, allow access
+        return True
+    
+    if api_password is None:
+        raise HTTPException(status_code=401, detail="API password is required")
+    
+    if api_password != settings.api_password:
+        raise HTTPException(status_code=403, detail="Invalid API password")
+    
+    return True
